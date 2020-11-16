@@ -1,5 +1,6 @@
-from datetime import datetime, timedelta
+from datetime import datetime
 from getpass import getpass
+import re
 import sys
 
 import click
@@ -11,29 +12,16 @@ from bs4 import BeautifulSoup
 
 BASE_URL = "https://news.ycombinator.com"
 
+def build_comments(comment, tabs):
+    cur = "\n\n" + "\t" * tabs + f"- {comment['text']} by [{comment['author']}](https://news.ycombinator.com/user?id={comment['author']})"
 
-def post_age_to_date(post_age):
-    if "ago" in post_age:
-        # get precise date from hn format:
-        # 4 days ago - 2 years ago - 5 seconds ago -> datetime object
-        date = datetime.now()
-        units = int(post_age.split()[0])
-        # timedelta does not support month
-        if "month" in post_age:
-            post_age = post_age.replace("month", "day") 
-            units *= 30
-        attrs = ["day", "hour", "minute", "second"]
-        for i in attrs:
-            if i in post_age:
-                # plural parameter
-                date = date - timedelta(**{f"{i}s": units})
-        return date
-    else:
-        return datetime.strptime(post_age, "on %b %d, %Y")
-
+    for child in comment["children"]:
+        cur += build_comments(child, tabs + 1)
+    return cur
 
 @click.command()
-def hn_sync():
+@click.option("--save_comments", is_flag=True, help="Whether or not the hacker news comments should also be saved.")
+def hn_sync(save_comments):
     with app.app_context():
         session = requests.Session()
         print("Enter your HN account details:")
@@ -80,28 +68,35 @@ def hn_sync():
 
             for j in range(n):
                 tree_subtext_each = tree_subtext[j].find_all("a")
-                tree_title_each = tree_title[2 * j + 1].find_all("a")
 
                 # This is to take care of situations where flag link may not be
                 # present in the subtext. So number of links could be either 3
                 # or 4.
                 num_subtext = len(tree_subtext_each)
-                discussion = f"{BASE_URL}/{tree_subtext_each[num_subtext - 1]['href']}"
-                data = {
-                    "title": tree_title_each[0].get_text(),
-                    "url": tree_title_each[0]["href"],
-                    "points": int(tree_score[j].get_text().split()[0]),
-                    "date": post_age_to_date(tree_subtext_each[1].get_text()),
-                    "hn_link": discussion
-                }
+                post_id = int(tree_subtext_each[num_subtext - 1]['href'].split("=")[1])
 
-                bookmark = DataObj(url=data["url"], path='hacker_news/', date=data["date"], type="bookmark")
-                bookmark.process_bookmark_url()
-                bookmark.title = data["title"]
-                bookmark.content = f"{data['points']} points on [Hacker News]({data['hn_link']}) \n{bookmark.content}"
-                bookmark.insert()
+                # call algolia api
+                res = requests.get(f"https://hn.algolia.com/api/v1/items/{post_id}").json()
+                if res["type"] == "story":
+                    bookmark = DataObj(path='hacker_news/', date=datetime.utcfromtimestamp(res["created_at_i"]), type="bookmark")
+                    hn_link = f"https://news.ycombinator/item?id={post_id}"
+                    if res["url"]:
+                        bookmark.url = res["url"] 
+                        bookmark.process_bookmark_url()
+                    else:
+                        bookmark.url = hn_link
+                        bookmark.content = res["title"].replace("<p>", "").replace("</p>", "")
+                        
+                    bookmark.title = res["title"]
+                    bookmark.content = f"{res['points']} points on [Hacker News]({hn_link})\n\n{bookmark.content}"
 
-                print(f"Saving {data['title']}...")
+
+                    if save_comments:
+                        for comment in res["children"]:
+                            bookmark.content += "\n\n" + build_comments(comment, 0)
+                    bookmark.insert()
+
+                print(f"Saving {res['title']}...")
 
 
                 links_processed += 1
