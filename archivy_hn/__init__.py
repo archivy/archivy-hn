@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 from getpass import getpass
+import re
 import sys
 
 import click
@@ -31,9 +32,16 @@ def post_age_to_date(post_age):
     else:
         return datetime.strptime(post_age, "on %b %d, %Y")
 
+def extract_comments(hn_url):
+    r = requests.get(hn_url)
+    parsed = BeautifulSoup(r.text)
+    
+    comments.process_bookmark_url()
+    return comments.content
 
 @click.command()
-def hn_sync():
+@click.option("--save_comments", is_flag=True, help="Whether or not the hacker news comments should also be saved.")
+def hn_sync(save_comments):
     with app.app_context():
         session = requests.Session()
         print("Enter your HN account details:")
@@ -98,7 +106,18 @@ def hn_sync():
                 bookmark = DataObj(url=data["url"], path='hacker_news/', date=data["date"], type="bookmark")
                 bookmark.process_bookmark_url()
                 bookmark.title = data["title"]
-                bookmark.content = f"{data['points']} points on [Hacker News]({data['hn_link']}) \n{bookmark.content}"
+                bookmark.content = f"{data['points']} points on [Hacker News]({data['hn_link']})\n\n{bookmark.content}"
+
+
+                if save_comments:
+                   cur_content = None
+                   comments_page = 1
+                   # check for more button to see if there is another page of comments
+                   while comments_page == 1 or "[More]" in cur_content:
+                       cur_content = extract_comments(f"{data['hn_link']}&p={comments_page}")
+                       bookmark.content += "\n\n" + cur_content
+                       comments_page += 1
+
                 bookmark.insert()
 
                 print(f"Saving {data['title']}...")
