@@ -1,3 +1,4 @@
 dist/
 build/
 archivy_hn.egg-info/
+__pycache__/
