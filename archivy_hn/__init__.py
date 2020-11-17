@@ -5,29 +5,47 @@ import sys
 import click
 import requests
 from archivy import app
+from archivy.data import create_dir, get_items
 from archivy.models import DataObj
-from archivy.data import create_dir
 from bs4 import BeautifulSoup
 
 BASE_URL = "https://news.ycombinator.com"
+num_links_processed = 0
+num_ask_hn = 0
+num_links = 0
 
 
 def build_comments(comment, tabs):
     cur = "\n\n" + "\t" * tabs + (
             f"- {comment['text']} by "
-            "[{comment['author']}](https://news.ycombinator.com/user?id={comment['author']})"
+            "[{comment['author']}]({BASE_URL}/user?id={comment['author']})"
           )
 
     for child in comment["children"]:
         cur += build_comments(child, tabs + 1)
     return cur
 
+def finish():
+    if not num_links_processed:
+        print(
+            "Could not retrieve any of the links. Check if you actually have any newly saved links."
+        )
+        sys.exit(1)
+    else:
+        print(f"Processed {num_links_processed} posts, "
+              f"including {num_links} external links and {num_ask_hn} posts "
+              f"directly posted on Hacker News (Ask HN: etc...)")
+
 
 @click.command()
+@click.option("--post_type",
+               default="upvoted",
+               help="Whether to sync upvoted posts or favorited ones. One of 'upvoted' or 'favorites'")
 @click.option("--save_comments",
               is_flag=True,
               help="Whether or not the hacker news comments should also be saved.")
-def hn_sync(save_comments):
+def hn_sync(save_comments, post_type):
+    global num_ask_hn, num_links, num_links_processed
     with app.app_context():
         session = requests.Session()
         print("Enter your HN account details:")
@@ -43,24 +61,27 @@ def hn_sync(save_comments):
             sys.exit(1)
         print("Logged in successfully.\n")
 
-        url = f"{BASE_URL}/upvoted?id={username}&p="
+        url = f"{BASE_URL}/{post_type}?id={username}&p="
         headers = {
             "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.14; rv:75.0) Gecko/20100101 Firefox/75.0",
         }
 
-        links_processed = 0
         i = 1
 
+        # create folders in archivy to store content
         create_dir("hacker_news")
+        create_dir("hacker_news/" + post_type)
+
+        # store titles of previous posts
+        seen_posts = set([post["title"] for post in get_items(
+                                                        path="hacker_news/",
+                                                        structured=False)])
         while True:
             print(f"Getting results of page {i}")
             r = session.get(url + str(i), headers=headers)
 
             tree = BeautifulSoup(r.text, features="lxml")
-
-            # Part that contains metadata such as author, no. of comments, etc.
             tree_subtext = tree.select(".subtext")
-
             # Number of links on the page
             n = len(tree_subtext)
 
@@ -74,33 +95,41 @@ def hn_sync(save_comments):
                 # This is to take care of situations where flag link may not be
                 # present in the subtext. So number of links could be either 3
                 # or 4.
-                # get post id by looking at link to comments
                 num_subtext = len(tree_subtext_each)
+                # get post id by parsing link to comments
                 post_id = int(tree_subtext_each[num_subtext - 1]['href'].split("=")[1])
 
                 # call algolia api
                 res = requests.get(f"https://hn.algolia.com/api/v1/items/{post_id}").json()
-                # might return a 404 if not indexed
+                # might return a 404 if not indexed, so we check if we got a response by calling .get()
                 if res.get("type") and res["type"] == "story":
-                    bookmark = DataObj(path='hacker_news/',
+                    if res["title"] in seen_posts:
+                        # we have already seen this upvoted story
+                        # this means that all stories that follow will also be seen
+                        finish()
+                        
+                    bookmark = DataObj(path=f"hacker_news/{post_type}/",
                                        date=datetime.utcfromtimestamp(res["created_at_i"]),
                                        type="bookmark")
-                    hn_link = f"https://news.ycombinator/item?id={post_id}"
+                    hn_link = f"{BASE_URL}/item?id={post_id}"
                     if res["url"]:
+                        num_links += 1
                         bookmark.url = res["url"]
                         bookmark.process_bookmark_url()
                     else:
+                        num_ask_hn += 1
                         bookmark.url = hn_link
                         bookmark.content = res["title"].replace("<p>", "").replace("</p>", "")
 
                     bookmark.title = res["title"]
                     bookmark.content = f"{res['points']} points on [Hacker News]({hn_link})\n\n{bookmark.content}"
 
-                    if save_comments:
+                    # save comments if user requests it through option or if story is an ASK HN
+                    if save_comments or not res["url"]:
                         for comment in res["children"]:
                             bookmark.content += "\n\n" + build_comments(comment, 0)
                     bookmark.insert()
-                    links_processed += 1
+                    num_links_processed += 1
                     print(f"Saving {res['title']}...")
 
             if n < 30:
@@ -108,11 +137,4 @@ def hn_sync(save_comments):
                 break
 
             i += 1
-
-        if not links_processed:
-            print(
-                "Could not retrieve any of the links. Check if you actually have any saved links."
-            )
-            sys.exit(1)
-        else:
-            print(f"Processed {links_processed} links")
+        finish()
