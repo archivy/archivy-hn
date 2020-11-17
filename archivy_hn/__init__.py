@@ -1,5 +1,4 @@
 from datetime import datetime
-from getpass import getpass
 import sys
 
 import click
@@ -18,7 +17,7 @@ num_links = 0
 def build_comments(comment, tabs):
     cur = "\n\n" + "\t" * tabs + (
             f"- {comment['text']} by "
-            "[{comment['author']}]({BASE_URL}/user?id={comment['author']})"
+            f"[{comment['author']}]({BASE_URL}/user?id={comment['author']})"
           )
 
     for child in comment["children"]:
@@ -37,24 +36,26 @@ def finish():
               f"directly posted on Hacker News (Ask HN: etc...)")
 
 
-@click.command()
-@click.option("--post_type",
+@click.command(help=f"Pull your upvoted or favorited posts from Hacker News and "
+                    f"save their contents into your knowledge base")
+@click.option("--post-type",
                default="upvoted",
                help="Whether to sync upvoted posts or favorited ones. One of 'upvoted' or 'favorites'")
-@click.option("--save_comments",
+@click.option("--save-comments",
               is_flag=True,
               help="Whether or not the hacker news comments should also be saved.")
-def hn_sync(save_comments, post_type):
+@click.option("--username",
+               required=True,
+               help="Username on Hacker News")
+@click.option('--hn-password', prompt=True, hide_input=True)
+def hn_sync(save_comments, post_type, username, hn_password):
     global num_ask_hn, num_links, num_links_processed
     with app.app_context():
         session = requests.Session()
-        print("Enter your HN account details:")
-        username = input("Username: ")
-        password = getpass()
 
         print("\nLogging in...")
 
-        r = session.post(f"{BASE_URL}/login", data={"acct": username, "pw": password})
+        r = session.post(f"{BASE_URL}/login", data={"acct": username, "pw": hn_password})
 
         if session.cookies.get("user", None) is None:
             print("Error logging in. Verify the credentials and try again.")
@@ -74,7 +75,7 @@ def hn_sync(save_comments, post_type):
 
         # store titles of previous posts
         seen_posts = set([post["title"] for post in get_items(
-                                                        path="hacker_news/",
+                                                        path=f"hacker_news/{post_type}/",
                                                         structured=False)])
         while True:
             print(f"Getting results of page {i}")
@@ -126,6 +127,7 @@ def hn_sync(save_comments, post_type):
 
                     # save comments if user requests it through option or if story is an ASK HN
                     if save_comments or not res["url"]:
+                        bookmark.content += "\n\n## Comments from Hacker News"
                         for comment in res["children"]:
                             bookmark.content += "\n\n" + build_comments(comment, 0)
                     bookmark.insert()
