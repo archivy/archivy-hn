@@ -1,6 +1,6 @@
-archivy_hn is an official extension for [Archivy](https://archivy.github.io).
+archivy-hn allows users to sync the posts they've upvoted on [hacker news](https://news.ycombinator.com) to their [Archivy](https://archivy.github.io) knowledge base.
 
-It allows users to sync the posts they've upvoted on [hacker news](https://news.ycombinator.com) to their archivy knowledge base.
+It is an official extension developed by [archivy](https://github.com/archivy/).
 
 ![demo](https://github.com/archivy/archivy_hn/blob/main/demo.gif)
 
