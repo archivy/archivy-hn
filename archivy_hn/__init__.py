@@ -6,6 +6,7 @@ import requests
 from archivy import app
 from archivy.data import create_dir, get_items
 from archivy.models import DataObj
+from archivy.click_web.web_click_types import PASSWORD_TYPE
 from bs4 import BeautifulSoup
 
 BASE_URL = "https://news.ycombinator.com"
@@ -47,7 +48,7 @@ def finish():
 @click.option("--username",
                required=True,
                help="Username on Hacker News")
-@click.option('--hn-password', prompt=True, hide_input=True)
+@click.option('--hn-password', prompt=True, hide_input=True, type=PASSWORD_TYPE)
 def hn_sync(save_comments, post_type, username, hn_password):
     global num_ask_hn, num_links, num_links_processed
     with app.app_context():
