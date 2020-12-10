@@ -3,11 +3,13 @@ import sys
 
 import click
 import requests
+from bs4 import BeautifulSoup
+from html2text import html2text
+
 from archivy import app
 from archivy.data import create_dir, get_items
 from archivy.models import DataObj
 from archivy.click_web.web_click_types import PASSWORD_TYPE
-from bs4 import BeautifulSoup
 
 BASE_URL = "https://news.ycombinator.com"
 num_links_processed = 0
@@ -15,14 +17,15 @@ num_ask_hn = 0
 num_links = 0
 
 
-def build_comments(comment, tabs):
-    cur = "\n\n" + "\t" * tabs + (
-            f"- {comment['text']} by "
-            f"[{comment['author']}]({BASE_URL}/user?id={comment['author']})"
+def build_comments(comment):
+    cur = (
+            f"<li>{comment['text']} by "
+            f"<a href='{BASE_URL}/user?id={comment['author']}'>{comment['author']}</a><ul>"
           )
 
     for child in comment["children"]:
-        cur += build_comments(child, tabs + 1)
+        cur += build_comments(child)
+    cur += "</ul></li>"
     return cur
 
 def finish():
@@ -130,7 +133,8 @@ def hn_sync(save_comments, post_type, username, hn_password):
                     if save_comments or not res["url"]:
                         bookmark.content += "\n\n## Comments from Hacker News"
                         for comment in res["children"]:
-                            bookmark.content += "\n\n" + build_comments(comment, 0)
+                            comments = "<ul>" + build_comments(comment) + "</ul>"
+                            bookmark.content += "\n\n" + html2text(comments, bodywidth=0).replace("\n\n", "\n")
                     bookmark.insert()
                     num_links_processed += 1
                     print(f"Saving {res['title']}...")
