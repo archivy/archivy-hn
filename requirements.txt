@@ -3,3 +3,4 @@ click
 requests
 bs4
 lxml
+html2text
