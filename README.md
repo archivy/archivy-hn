@@ -32,6 +32,15 @@ Options:
   --help              Show this message and exit.
 ```
 
+## Install in Docker
+To install this plugin inside the official Docker image for Archivy, do the following:
+1) `docker exec -u 0 archivy apk add libxml2-dev` to install the `libxml2-dev` dependency.
+2) `docker exec -u 0 archivy apk add libxslt-dev` to install the `libxslt-dev` dependency.
+3) `docker exec archivy pip install archivy_hn` to install the plugin.
+
+## Usage in Docker
+To execute commands within the container, use the `docker exec -it archivy archivy hn-sync [OPTIONS]` format. 
+For example: `docker exec -it archivy hn-sync --username example --hn-password password --save-comments`.
 
 ### Contributing
 
