@@ -102,7 +102,7 @@ def hn_sync(save_comments, post_type, username, hn_password):
                 # or 4.
                 num_subtext = len(tree_subtext_each)
                 # get post id by parsing link to comments
-                post_id = int(tree_subtext_each[num_subtext - 1]['href'].split("=")[1])
+                post_id = int(tree_subtext_each[num_subtext - 1]['href'].split("=")[1].split("&")[0])
 
                 # call algolia api
                 res = requests.get(f"https://hn.algolia.com/api/v1/items/{post_id}").json()
