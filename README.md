@@ -40,7 +40,7 @@ To install this plugin inside the official Docker image for Archivy, do the foll
 
 ## Usage in Docker
 To execute commands within the container, use the `docker exec -it archivy archivy hn-sync [OPTIONS]` format. 
-For example: `docker exec -it archivy hn-sync --username example --hn-password password --save-comments`.
+For example: `docker exec -it archivy archivy hn-sync --username example --hn-password password --save-comments`.
 
 ### Contributing
 
